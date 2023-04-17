@@ -1,5 +1,6 @@
 from http import HTTPStatus
 
+from django.shortcuts import render
 from django.test import TestCase
 # from pytest_django.asserts import assertTemplateUsed
 # from django.shortcuts import render
@@ -11,7 +12,7 @@ class ViewTestClass(TestCase):
         # Проверьте, что статус ответа сервера - 404
         self.assertEqual(response.status_code, HTTPStatus.NOT_FOUND)
         self.assertTemplateUsed(response, 'core/404.html')
-        # return render(request, 'core/404.html', {'path': request.path}, status=404)
+        return render(response, 'core/404.html')
 
     '''
     def test_error_csrf(self):
