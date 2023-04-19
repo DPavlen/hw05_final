@@ -10,7 +10,7 @@ from django.test import TestCase, Client
 from django.urls import reverse
 
 
-from posts.models import Post, Group, User
+from posts.models import Post, Group, User, Follow
 from ..views import COUNT_POST
 
 User = get_user_model()
@@ -72,6 +72,9 @@ class ViewPagesTests(TestCase):
         self.authorized_client_user_second = Client()
         self.authorized_client_user_second.force_login(
             self.user_second)
+        # Пользователи followers для теста подписок
+        self.follower = User.objects.create_user(username='Follower')
+        self.follower_second = User.objects.create_user(username='Follower_2')
 
     def test_pages_uses_correct_template(self):
         """URL-адрес использует соответствующий шаблон.
@@ -334,22 +337,23 @@ class ViewPagesTests(TestCase):
         comment = response.context['comments'][0]
         self.assertEqual(comment.text, 'Тестовый комментарий')
 
-    def test_index_cache_1(self):
+    def test_index_cache_one(self):
         """Напишите тесты, которые проверяют работу кеша. user."""
-        post = Post.objects.create(
+        response = self.authorized_client.get(reverse('posts:index'))
+        post = response.content
+        Post.objects.create(
+            text='test_new_post',
             author=self.user,
-            text='Новый тестовый пост'
         )
-        response = self.authorized_client.get(reverse('posts:index'))
-        temp = response.content
-        post.delete()
-        response = self.authorized_client.get(reverse('posts:index'))
-        self.assertEqual(response.content, temp)
+        response_old = self.authorized_client.get(reverse('posts:index'))
+        old_post = response_old.content
+        self.assertEqual(old_post, post)
         cache.clear()
-        response = self.authorized_client.get(reverse('posts:index'))
-        self.assertNotEqual(response.content, temp)
+        response_new = self.authorized_client.get(reverse('posts:index'))
+        new_post = response_new.content
+        self.assertNotEqual(old_post, new_post)
 
-    def test_index_cache_2(self):
+    def test_index_cache_two(self):
         """Напишите тесты, которые проверяют работу кеша 2. user_second."""
         post = Post.objects.create(
             author=self.user_second,
@@ -357,8 +361,84 @@ class ViewPagesTests(TestCase):
         )
         response = self.authorized_client.get(reverse('posts:index'))
         Post.objects.filter(pk=post.pk).delete()
-        response_2 = self.authorized_client.get(reverse('posts:index'))
-        self.assertEqual(response.content, response_2.content)
+        response_new = self.authorized_client.get(reverse('posts:index'))
+        self.assertEqual(response.content, response_new.content)
+
+    def test_correct_following_authors(self):
+        """Авторизованный пользователь может подписываться на
+        других пользователей и удалять их из подписок."""
+        Post.objects.create(
+            author=self.follower,
+            text='Новый пост',
+        )
+        Follow.objects.create(
+            user=self.user,
+            author=self.follower,
+        )
+        response = self.authorized_client.get(
+            reverse('posts:follow_index')
+        )
+        page_object = response.context['page_obj']
+        first_post = page_object[0]
+        self.assertEqual(first_post.text, 'Новый пост')
+        # проверяем корректное удаление подписки
+        Follow.objects.get(
+            user=self.user,
+            author=self.follower,
+        ).delete()
+        response = self.authorized_client.get(
+            reverse('posts:follow_index')
+        )
+        page_object = response.context['page_obj']
+        self.assertFalse(page_object)
+
+    def test_correct_content_following_users(self):
+        """Новая запись пользователя появляется в ленте тех, кто на него
+        подписан не появляется в ленте тех, кто не подписан."""
+        # Может проверки для Follow and UnFollow в одном классе
+        # или и так нормально????
+        # follower_second = User.objects.create_user(username='follower_2')
+        new_user = User.objects.create_user(username='new_user')
+        new_user_client = Client()
+        new_user_client.force_login(new_user)
+        Post.objects.create(
+            author=self.follower,
+            text='Новый пост',
+        )
+        Post.objects.create(
+            author=self.follower_second,
+            text='Новый Пост2'
+        )
+        obj = [
+            Follow(
+                user=self.user,
+                author=self.follower
+            ),
+            Follow(
+                user=self.user,
+                author=self.follower_second,
+            ),
+            Follow(
+                user=new_user,
+                author=self.follower
+            )
+        ]
+        # Метод bulk_create() позволяет добавить набор объектов,
+        #  который передается в метод в качестве параметра:
+        Follow.objects.bulk_create(obj)
+        response_first = self.authorized_client.get(
+            reverse('posts:follow_index')
+        )
+        count_for_first_user = len(
+            response_first.context['page_obj']
+        )
+        response_second = new_user_client.get(
+            reverse('posts:follow_index')
+        )
+        count_for_second_user = len(
+            response_second.context['page_obj']
+        )
+        self.assertNotEqual(count_for_first_user, count_for_second_user)
 
 
 class PaginatorViewsTest(TestCase):

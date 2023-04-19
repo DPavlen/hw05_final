@@ -1,12 +1,11 @@
-from django.shortcuts import get_object_or_404, redirect, render
 from django.contrib.auth.decorators import login_required
+from django.shortcuts import get_object_or_404, redirect, render
 from django.core.paginator import Paginator
 from django.urls import reverse
 # from django.views.decorators.cache import cache_page
 
 from .forms import PostForm, CommentForm
 from .models import Group, Post, User, Follow
-
 from .utils import paginator_context
 
 
@@ -47,7 +46,7 @@ def profile(request, username):
     author = get_object_or_404(User, username=username)
     posts = author.posts.select_related('author').all()
     page_obj = paginator_context(request, posts)
-    following = True
+
     if request.user.is_authenticated:
         following = Follow.objects.filter(
             user=request.user,

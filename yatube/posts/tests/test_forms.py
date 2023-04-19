@@ -4,9 +4,9 @@ from http import HTTPStatus
 
 from django.contrib.auth import get_user_model
 from django.conf import settings
-from django.test import TestCase, Client, override_settings
-from django.urls import reverse
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import Client, override_settings, TestCase
+from django.urls import reverse
 
 from ..forms import PostForm
 from ..models import Group, Post
@@ -90,10 +90,10 @@ class PostCreateFormTest(TestCase):
             data=form_data,
             follow=True,
         )
-        post_2_edit = Post.objects.get(id=self.post.pk)
+        post_edit_second = Post.objects.get(id=self.post.pk)
         self.assertEqual(response_edit_post.status_code, HTTPStatus.OK)
-        self.assertEqual(post_2_edit.text, form_data.get('text'))
-        self.assertEqual(post_2_edit.group.pk, form_data.get('group'))
+        self.assertEqual(post_edit_second.text, form_data.get('text'))
+        self.assertEqual(post_edit_second.group.pk, form_data.get('group'))
 
     def test_create_post_not_authorized(self):
         """Неавторизованный клиент и проверить с ним создание."""
