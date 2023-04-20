@@ -1,26 +1,18 @@
 import shutil
 import tempfile
 
-# from django import forms
 from django.contrib.auth import get_user_model
 from django.conf import settings
 from django.core.cache import cache
-# from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, Client
 from django.urls import reverse
-
 
 from posts.models import Post, Group, User, Follow
 from ..views import COUNT_POST
 
 User = get_user_model()
 
-# Создаем временную папку для медиа-файлов;
-# на момент теста медиа папка будет переопределена
-# TEMP_MEDIA_ROOT = tempfile.mkdtemp(dir=settings.BASE_DIR)
 
-
-# @override_settings(MEDIA_ROOT=TEMP_MEDIA_ROOT)
 class ViewPagesTests(TestCase):
     @classmethod
     def setUpClass(cls):
@@ -56,6 +48,21 @@ class ViewPagesTests(TestCase):
             text="Тестовая запись 13",
             group=cls.group_second,
         )
+        # Создаем Follow и привязываем к ним cls.author(author)
+        cls.follower = User.objects.create_user(
+            username='Follower_test',
+            first_name='Follower_first',
+            last_name='Тестовый_фолловер',
+        )
+        cls.follow = Follow.objects.create(
+            user=cls.follower,
+            author=cls.user
+        )
+        cls.not_follower = User.objects.create_user(
+            username='Follower_test_second',
+            first_name='Follower_second',
+            last_name='Тестовый_фолловер_второй',
+        )
 
     @classmethod
     def tearDownClass(cls):
@@ -72,9 +79,13 @@ class ViewPagesTests(TestCase):
         self.authorized_client_user_second = Client()
         self.authorized_client_user_second.force_login(
             self.user_second)
+        # Пользователи followers для теста авторизованных подписок
+        self.follower_auth = User.objects.create_user(username='Follower_auth')
         # Пользователи followers для теста подписок
-        self.follower = User.objects.create_user(username='Follower')
-        self.follower_second = User.objects.create_user(username='Follower_2')
+        self.authorized_client_follower = Client()
+        self.authorized_client_follower.force_login(self.follower)
+        self.authorized_not_follower = Client()
+        self.authorized_not_follower.force_login(self.not_follower)
 
     def test_pages_uses_correct_template(self):
         """URL-адрес использует соответствующий шаблон.
@@ -82,11 +93,10 @@ class ViewPagesTests(TestCase):
         template = {
             "posts:index": ['posts/index.html', ''],
             "posts:group_list": ["posts/group_list.html", [self.group.slug]],
-            # "posts:profile": ["posts/profile.html", [self.user.author]],
             "posts:profile": ["posts/profile.html", [self.user.username]],
             "posts:post_detail": ["posts/post_detail.html", [self.post.id]],
             "posts:post_create": ["posts/create_post.html", ""],
-            "posts:post_edit": ["posts/create_post.html", [self.post.id]]
+            "posts:post_edit": ["posts/create_post.html", [self.post.id]],
         }
 
         for name, template in template.items():
@@ -103,10 +113,7 @@ class ViewPagesTests(TestCase):
         expected_context = {
             'page_obj': None,
         }
-        # Получим изображение из контекста.
         image_context = response.context.get('page_obj').object_list[0]
-        # Проверяем, что типы полей в словаре context соответствуют ожиданиям
-        # Method assertIn(a, b), Checks that a in b
         for key, value in expected_context.items():
             self.assertIn(
                 key,
@@ -134,10 +141,7 @@ class ViewPagesTests(TestCase):
             'group': self.group,
             'page_obj': None,
         }
-        # Получим изображение из контекста.
         image_context = response.context.get('page_obj').object_list[0]
-        # Проверяем, что типы полей в словаре context соответствуют ожиданиям
-        # Method assertIn(a, b), Checks that a in b
         for key, value in expected_context.items():
             self.assertIn(
                 key,
@@ -164,7 +168,6 @@ class ViewPagesTests(TestCase):
             'author': self.user,
             'page_obj': None
         }
-        # Получим изображение из контекста.
         image_context = response.context.get('page_obj').object_list[0]
         for key, value in expected_context.items():
             self.assertIn(
@@ -193,7 +196,6 @@ class ViewPagesTests(TestCase):
             'post_number':
                 Post.objects.filter(author=self.user).count()
         }
-        # Получим изображение из контекста.
         image_context = response.context.get('post')
         for key, value in expected_context.items():
             self.assertIn(
@@ -368,12 +370,12 @@ class ViewPagesTests(TestCase):
         """Авторизованный пользователь может подписываться на
         других пользователей и удалять их из подписок."""
         Post.objects.create(
-            author=self.follower,
+            author=self.follower_auth,
             text='Новый пост',
         )
         Follow.objects.create(
             user=self.user,
-            author=self.follower,
+            author=self.follower_auth,
         )
         response = self.authorized_client.get(
             reverse('posts:follow_index')
@@ -381,64 +383,15 @@ class ViewPagesTests(TestCase):
         page_object = response.context['page_obj']
         first_post = page_object[0]
         self.assertEqual(first_post.text, 'Новый пост')
-        # проверяем корректное удаление подписки
         Follow.objects.get(
             user=self.user,
-            author=self.follower,
+            author=self.follower_auth,
         ).delete()
         response = self.authorized_client.get(
             reverse('posts:follow_index')
         )
         page_object = response.context['page_obj']
         self.assertFalse(page_object)
-
-    def test_correct_content_following_users(self):
-        """Новая запись пользователя появляется в ленте тех, кто на него
-        подписан не появляется в ленте тех, кто не подписан."""
-        # Может проверки для Follow and UnFollow в одном классе
-        # или и так нормально????
-        # follower_second = User.objects.create_user(username='follower_2')
-        new_user = User.objects.create_user(username='new_user')
-        new_user_client = Client()
-        new_user_client.force_login(new_user)
-        Post.objects.create(
-            author=self.follower,
-            text='Новый пост',
-        )
-        Post.objects.create(
-            author=self.follower_second,
-            text='Новый Пост2'
-        )
-        obj = [
-            Follow(
-                user=self.user,
-                author=self.follower
-            ),
-            Follow(
-                user=self.user,
-                author=self.follower_second,
-            ),
-            Follow(
-                user=new_user,
-                author=self.follower
-            )
-        ]
-        # Метод bulk_create() позволяет добавить набор объектов,
-        #  который передается в метод в качестве параметра:
-        Follow.objects.bulk_create(obj)
-        response_first = self.authorized_client.get(
-            reverse('posts:follow_index')
-        )
-        count_for_first_user = len(
-            response_first.context['page_obj']
-        )
-        response_second = new_user_client.get(
-            reverse('posts:follow_index')
-        )
-        count_for_second_user = len(
-            response_second.context['page_obj']
-        )
-        self.assertNotEqual(count_for_first_user, count_for_second_user)
 
 
 class PaginatorViewsTest(TestCase):
@@ -501,3 +454,51 @@ class PaginatorViewsTest(TestCase):
         response = self.client.get(page)
         count_posts_on_page = len(response.context['page_obj'])
         self.assertEqual(count_posts_on_page, expected)
+
+
+class FollowTests(TestCase):
+    def setUp(self):
+        self.client_auth_follower = Client()
+        self.client_auth_not_follower = Client()
+        self.user_follower = User.objects.create(username='follower')
+        self.user_not_follower = User.objects.create(username='not_following')
+        self.post = Post.objects.create(
+            author=self.user_not_follower,
+            text='Тестовая запись для тестирования ленты'
+        )
+        self.client_auth_follower.force_login(self.user_follower)
+        self.client_auth_not_follower.force_login(self.user_not_follower)
+
+    def profile_follow(self):
+        """Тестирование подписки на автора."""
+        self.client_auth_follower.get(
+            reverse(
+                'posts:profile_follow',
+                kwargs={'username': self.user_not_follower.username}
+            )
+        )
+        self.assertEqual(Follow.objects.all().count(), 1)
+
+    def profile_unfollow(self):
+        """Тестирование отписки от автора."""
+        self.client_auth_follower.get(
+            reverse('posts:profile_follow',
+                    kwargs={'username': self.user_not_follower.username}))
+        self.client_auth_follower.get(
+            reverse('posts:profile_unfollow',
+                    kwargs={'username': self.user_not_follower.username}))
+        self.assertEqual(Follow.objects.all().count(), 0)
+
+    def test_subscription(self):
+        """Проверка, что запись появляется в ленте подписчиков.
+        И проверка, что запись не появилась у неподписанного пользователя."""
+        Follow.objects.create(
+            user=self.user_follower,
+            author=self.user_not_follower,
+        )
+        response = self.client_auth_follower.get('/follow/')
+        post_text_0 = response.context['page_obj'][0].text
+        self.assertEqual(post_text_0, 'Тестовая запись для тестирования ленты')
+
+        response = self.client_auth_not_follower.get('posts:follow_index')
+        self.assertNotEqual(response, 'Тестовая запись для тестирования ленты')

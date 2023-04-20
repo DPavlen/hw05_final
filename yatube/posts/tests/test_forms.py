@@ -14,11 +14,7 @@ from ..models import Group, Post
 
 User = get_user_model()
 
-# Создаем временную папку для медиа-файлов;
-# на момент теста медиа папка будет переопределена
 TEMP_MEDIA_ROOT = tempfile.mkdtemp(dir=settings.BASE_DIR)
-# Для сохранения media-файлов в тестах будет использоваться
-# временная папка TEMP_MEDIA_ROOT, а потом мы ее удалим
 
 
 @override_settings(MEDIA_ROOT=TEMP_MEDIA_ROOT)
@@ -90,10 +86,10 @@ class PostCreateFormTest(TestCase):
             data=form_data,
             follow=True,
         )
-        post_edit_second = Post.objects.get(id=self.post.pk)
+        post_edit = Post.objects.get(id=self.post.pk)
         self.assertEqual(response_edit_post.status_code, HTTPStatus.OK)
-        self.assertEqual(post_edit_second.text, form_data.get('text'))
-        self.assertEqual(post_edit_second.group.pk, form_data.get('group'))
+        self.assertEqual(post_edit.text, form_data.get('text'))
+        self.assertEqual(post_edit.group.pk, form_data.get('group'))
 
     def test_create_post_not_authorized(self):
         """Неавторизованный клиент и проверить с ним создание."""
