@@ -8,7 +8,7 @@ from django.test import TestCase, Client
 from django.urls import reverse
 
 from posts.models import Post, Group, User, Follow
-from ..views import COUNT_POST
+from posts.views import COUNT_POST
 
 User = get_user_model()
 
