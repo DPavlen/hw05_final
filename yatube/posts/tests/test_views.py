@@ -4,6 +4,7 @@ import tempfile
 from django.contrib.auth import get_user_model
 from django.conf import settings
 from django.core.cache import cache
+from django.http.response import HttpResponse
 from django.test import TestCase, Client
 from django.urls import reverse
 
@@ -456,49 +457,76 @@ class PaginatorViewsTest(TestCase):
         self.assertEqual(count_posts_on_page, expected)
 
 
-class FollowTests(TestCase):
+class FollowViewTest(TestCase):
     def setUp(self):
-        self.client_auth_follower = Client()
-        self.client_auth_not_follower = Client()
-        self.user_follower = User.objects.create(username='follower')
-        self.user_not_follower = User.objects.create(username='not_following')
-        self.post = Post.objects.create(
-            author=self.user_not_follower,
-            text='Тестовая запись для тестирования ленты'
+        self.follower = User.objects.create_user(username='Follower')
+        self.not_follower = User.objects.create_user(username='Not_Follower')
+        self.guest_client = Client()
+        self.authorized_client = Client()
+        self.authorized_client.force_login(self.follower)
+
+        self.authorized_client_second = Client()
+        self.authorized_client_second.force_login(self.not_follower)
+
+        self.author = User.objects.create_user(username='author_follow')
+        self.author_post = Post.objects.create(
+            text='Текст проверки подписчиков',
+            author=self.author,
         )
-        self.client_auth_follower.force_login(self.user_follower)
-        self.client_auth_not_follower.force_login(self.user_not_follower)
 
-    def profile_follow(self):
-        """Тестирование подписки на автора."""
-        self.client_auth_follower.get(
-            reverse(
-                'posts:profile_follow',
-                kwargs={'username': self.user_not_follower.username}
-            )
+    def follow_check(self, client):
+        follow = client.get(
+            reverse('posts:profile_follow', args={self.author}))
+        return follow
+
+    def unfollow_check(self, client):
+        unfollow = client.get(
+            reverse('posts:profile_unfollow', args={self.author}))
+        return unfollow
+
+    def test_authorized_user_can_follow_authors(self):
+        """Авторизованный пользователь может подписываться на авторов."""
+        follows_start_count = Follow.objects.count()
+        response = self.follow_check(self.authorized_client)
+
+        follows_end_count = Follow.objects.count()
+        self.assertEqual(follows_end_count, follows_start_count + 1)
+        last_follow = Follow.objects.latest('id')
+        self.assertEqual(last_follow.author, self.author)
+        self.assertRedirects(
+            response,
+            reverse('posts:profile', args={self.author})
         )
-        self.assertEqual(Follow.objects.all().count(), 1)
 
-    def profile_unfollow(self):
-        """Тестирование отписки от автора."""
-        self.client_auth_follower.get(
-            reverse('posts:profile_follow',
-                    kwargs={'username': self.user_not_follower.username}))
-        self.client_auth_follower.get(
-            reverse('posts:profile_unfollow',
-                    kwargs={'username': self.user_not_follower.username}))
-        self.assertEqual(Follow.objects.all().count(), 0)
+    def test_authorized_user_can_unfollow_authors(self) -> None:
+        """Авторизованный пользователь может отписываться от авторов."""
+        followers_start_count = Follow.objects.count()
+        self.follow_check(self.authorized_client)
+        response = self.unfollow_check(self.authorized_client)
+        followers_end_count = Follow.objects.count()
 
-    def test_subscription(self):
-        """Проверка, что запись появляется в ленте подписчиков.
-        И проверка, что запись не появилась у неподписанного пользователя."""
-        Follow.objects.create(
-            user=self.user_follower,
-            author=self.user_not_follower,
+        self.assertRedirects(
+            response,
+            reverse('posts:profile', args={self.author})
         )
-        response = self.client_auth_follower.get('/follow/')
-        post_text_0 = response.context['page_obj'][0].text
-        self.assertEqual(post_text_0, 'Тестовая запись для тестирования ленты')
+        self.assertEqual(followers_end_count, followers_start_count)
 
-        response = self.client_auth_not_follower.get('posts:follow_index')
-        self.assertNotEqual(response, 'Тестовая запись для тестирования ленты')
+    def test_new_author_post_is_show_on_followers(self):
+        """Новая запись пользователя появляется в ленте тех,
+        кто на него подписан."""
+        self.follow_check(self.authorized_client)
+        response = self.authorized_client.get(
+            reverse('posts:follow_index'))
+        post_follow = response.context['page_obj'][0]
+        self.assertEqual(post_follow, self.author_post)
+
+    def test_deleted_author_post_is_not_show_on_followers(self):
+        """Новая запись пользователя появляется в ленте тех,
+        и не появляется в ленте тех, кто не подписан."""
+        Post.objects.create(
+            text='новый текст автора',
+            author=self.author,
+        )
+        response = self.authorized_client_second.get(
+            reverse('posts:follow_index'))
+        self.assertEqual(len(response.context['page_obj']), 0)
