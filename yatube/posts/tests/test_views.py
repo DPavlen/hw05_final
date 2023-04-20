@@ -4,7 +4,6 @@ import tempfile
 from django.contrib.auth import get_user_model
 from django.conf import settings
 from django.core.cache import cache
-from django.http.response import HttpResponse
 from django.test import TestCase, Client
 from django.urls import reverse
 
@@ -35,7 +34,6 @@ class ViewPagesTests(TestCase):
             slug="test-slugsecond",
             description="Тестовое описание второй группы",
         )
-        # Создаем картинку
 
         # Добавляем посты к user = TestAuthorPost
         cls.post = Post.objects.create(

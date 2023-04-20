@@ -38,14 +38,11 @@ class Post(models.Model):
         help_text='Группа, к которой будет относиться пост'
     )
 
-    # Поле для картинки (необязательное)
     image = models.ImageField(
         'Картинка',
         upload_to='posts/',
         blank=True
     )
-    # Аргумент upload_to указывает директорию,
-    # в которую будут загружаться пользовательские файлы.
 
     def __str__(self):
         return self.text[:POST_TEXT]

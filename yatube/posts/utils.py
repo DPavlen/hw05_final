@@ -1,7 +1,5 @@
-# from django.conf import settings
 from django.core.paginator import Paginator
 
-#  Число страниц
 COUNT_PAGES = 10
 
 

@@ -38,9 +38,6 @@ class PostCreateFormTest(TestCase):
     @classmethod
     def tearDownClass(cls):
         super().tearDownClass()
-        # Модуль shutil - библиотека Python с удобными инструментами
-        # для управления файлами и директориями:
-        # Метод shutil.rmtree удаляет директорию и всё её содержимое
         shutil.rmtree(TEMP_MEDIA_ROOT, ignore_errors=True)
 
     def setUp(self):
@@ -123,11 +120,7 @@ class PostCreateFormTest(TestCase):
 
     def test_create_post(self):
         """Валидная форма создает запись в Posts."""
-        # Подсчитаем количество записей в Post
         posts_count = Post.objects.count()
-        # Для тестирования загрузки изображений
-        # берём байт-последовательность картинки,
-        # состоящей из двух пикселей: белого и чёрного
         small_gif = (
             b'\x47\x49\x46\x38\x39\x61\x02\x00'
             b'\x01\x00\x80\x00\x00\x00\x00\x00'
@@ -146,15 +139,11 @@ class PostCreateFormTest(TestCase):
             'text': 'Тестовый текст',
             'image': uploaded,
         }
-        # Отправляем POST-запрос
-        # response = self.authorized_client.get(reverse('posts:post_create'))
         response = self.authorized_client.post(
             reverse('posts:post_create'),
             data=form_data,
             follow=True
         )
-        # Проверяем, сработал ли редирект на profile
         self.assertRedirects(response, reverse('posts:profile',
                              kwargs={'username': f'{self.user.username}'}))
-        # Проверяем, увеличилось ли число постов
         self.assertEqual(Post.objects.count(), posts_count + 1)
